@@ -1,0 +1,33 @@
+frontend http-in
+    bind *:80
+
+    acl is_post method POST
+    acl is_get  method GET
+
+    use_backend write if is_post
+    use_backend read  if is_get
+
+backend write
+    balance roundrobin
+    http-request set-header Host write.request.com
+    server write_one 138.197.142.123:80 check
+    server write_one 138.197.142.113:80 check
+
+backend read
+    http-request set-header Host read.request.com
+    server read_one 138.197.142.168:80 check
+
+listen stats :8080
+    mode http
+    stats enable
+    stats hide-version
+    stats realm Haproxy\ Statistics
+    stats uri /
+    stats auth haproxy:haproxy
+
+
+###########  Testing  ############
+## Test with POST: curl -i -X POST http://159.203.23.151
+
+## Test with siege: siege http://159.203.23.151
+## Test with siege: siege -H 'test:application/text' "http://159.203.23.151 POST &lt; ./data.text" -c 10 -r 1000
