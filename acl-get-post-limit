@@ -1,0 +1,80 @@
+#---------------------------------------------------------------------
+global
+    ############################
+    log         127.0.0.1 local2
+
+    chroot      /var/lib/haproxy
+    pidfile     /var/run/haproxy.pid
+    maxconn     4000
+    user        haproxy
+    group       haproxy
+    daemon
+
+    # turn on stats unix socket
+    stats socket /var/lib/haproxy/stats
+    tune.ssl.default-dh-param 1024
+#---------------------------------------------------------------------
+# common defaults that all the 'listen' and 'backend' sections will
+# use if not designated in their block
+#---------------------------------------------------------------------
+defaults
+    mode                    http
+    log                     global
+    option                  httplog
+    option                  dontlognull
+    option http-server-close
+    option forwardfor       except 127.0.0.0/8
+    option                  redispatch
+    retries                 3
+    timeout http-request    5s
+    timeout queue           1m
+    timeout connect         10s
+    timeout client          1m
+    timeout server          1m
+    timeout http-keep-alive 10s
+    timeout check           10s
+    maxconn                 3000
+
+#---------------------------------------------------------------------
+#---------------------------------------------------------------------
+
+frontend https-ssl
+        bind :80
+        bind :443 ssl crt /etc/nginx/ssl/server.pem
+        
+        stick-table type ip size 500k expire 1s store conn_cur,conn_rate(1s),http_req_rate(1s),http_err_rate(1s)
+
+        tcp-request connection reject if { src_conn_cur ge 7 }          ## Current running sessions limit
+        tcp-request connection reject if { src_conn_rate ge 5 }         ## Concurrent new sessions limit
+        tcp-request connection reject if { src_http_req_rate ge 5 }     ## HTTP request rate limit
+###     tcp-request connection reject if { src_http_err_rate ge 4 }
+        tcp-request connection track-sc0 src
+
+        acl is_app url_reg /accounts/([0-9]?[0-9]?[0-9]?)/
+        acl is_cloud url_reg /accounts/([1][0-9][0-9][0-9]|2000)/
+        acl is_post method POST
+        acl is_get  method GET
+        use_backend app_post if is_app is_post
+        use_backend app_get if is_app is_get
+
+        use_backend cloud_post if is_cloud is_post
+        use_backend cloud_get if is_cloud is_get
+        #default_backend app_post                         ## Can define default backend
+
+backend app_post
+        server server1 IP-ADDRESS:443 check ssl verify none   ##  "verify none" will not verify SSL Cert
+backend app_get
+        server server2 IP-ADDRESS:443 check ssl verify none
+backend cloud_post
+        server server3 IP-ADDRESS:443 check ssl verify none
+backend cloud_get
+        server server4 IP-ADDRESS:443 check ssl verify none
+
+listen stats
+    bind :8081
+    mode http
+    stats enable
+    stats hide-version
+    stats realm Haproxy\ Statistics
+    stats uri /
+    stats auth haproxy:haproxy      ## User and Password for Haproxy Console Login
