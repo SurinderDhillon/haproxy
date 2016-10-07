@@ -1,3 +1,7 @@
+## Use self-signed cert for development. Use CA certs for Production.
+## Create pem file by joining example.key and example.crt file from backend server and copy it to Haproxy server.
+## Provide the path of pem file in frontend.
+
 #---------------------------------------------------------------------
 global
     ############################
